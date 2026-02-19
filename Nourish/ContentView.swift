@@ -9,8 +9,80 @@ import SwiftData
 // MARK: - Root
 
 struct ContentView: View {
+    @State private var showingSplash = true
+
     var body: some View {
-        HomeView()
+        ZStack {
+            HomeView()
+
+            if showingSplash {
+                SplashView {
+                    withAnimation(.easeOut(duration: 0.4)) {
+                        showingSplash = false
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
+    }
+}
+
+// MARK: - Splash View
+
+struct SplashView: View {
+    var onFinished: () -> Void
+
+    @State private var phase = 0
+
+    var body: some View {
+        ZStack {
+            Color(.systemBackground)
+                .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                // Pixelated plant icon from app icon
+                Image("SplashIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 180, height: 180)
+                    .scaleEffect(phase >= 2 ? 1.0 : 0.01)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.6), value: phase)
+
+                // App title
+                Text("Nourish")
+                    .font(.system(.largeTitle, design: .rounded))
+                    .fontWeight(.bold)
+                    .foregroundStyle(.primary)
+                    .opacity(phase >= 3 ? 1 : 0)
+                    .animation(.easeIn(duration: 0.4), value: phase)
+
+                // Tagline
+                Text("Grow your friendships")
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .opacity(phase >= 4 ? 1 : 0)
+                    .animation(.easeIn(duration: 0.4), value: phase)
+            }
+        }
+        .accessibilityHidden(true)
+        .onAppear {
+            // Phase 2 (0.3s): Seedling scales up
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                phase = 2
+            }
+            // Phase 3 (0.8s): Plant transition + title
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                phase = 3
+            }
+            // Phase 4 (1.4s): Tagline
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                phase = 4
+            }
+            // Phase 5 (2.2s): Dismiss
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+                onFinished()
+            }
+        }
     }
 }
 
@@ -66,8 +138,8 @@ struct HomeView: View {
         NavigationStack {
             ZStack {
                 VStack(spacing: 0) {
-                    // Category filter tabs
-                    if !categories.isEmpty {
+                    // Category filter tabs (hidden when no friends)
+                    if !categories.isEmpty && !friends.isEmpty {
                         categoryTabs
                     }
 
@@ -99,6 +171,7 @@ struct HomeView: View {
                             .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(.secondary)
                     }
+                    .accessibilityLabel("Settings")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -109,6 +182,7 @@ struct HomeView: View {
                             .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(.mint)
                     }
+                    .accessibilityLabel("Add friend")
                 }
             }
             .sheet(isPresented: $showingAddFriend) {
@@ -268,6 +342,13 @@ struct FriendRowView: View {
                     Text(friend.name)
                         .font(.system(.headline, design: .rounded))
                         .fontWeight(.semibold)
+                    if friend.isBirthdayToday {
+                        Text("🎉")
+                            .font(.system(.caption))
+                    } else if friend.isBirthdaySoon {
+                        Text("🎂")
+                            .font(.system(.caption))
+                    }
                     Spacer()
                     StatusBadge(status: friend.status)
                 }
@@ -281,6 +362,8 @@ struct FriendRowView: View {
             }
         }
         .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(friend.name)\(friend.isBirthdayToday ? ", birthday today!" : friend.isBirthdaySoon ? ", birthday soon" : ""), \(friend.status.rawValue), health \(Int(friend.healthScore)) out of 100, last contact \(daysSince == 0 ? "today" : daysSince == 1 ? "1 day ago" : "\(daysSince) days ago")")
     }
 }
 
@@ -300,6 +383,7 @@ struct StatusBadge: View {
                 Capsule()
                     .fill(status.color.opacity(0.15))
             )
+            .accessibilityLabel("Status: \(status.rawValue)")
     }
 }
 
@@ -330,6 +414,8 @@ struct CategoryTab: View {
             .foregroundStyle(isSelected ? .white : .primary)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(name) category")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -364,6 +450,7 @@ struct GhostPeekingOverlay: View {
             }
         }
         .allowsHitTesting(false)
+        .accessibilityHidden(true)
         .onAppear {
             startPeekingCycle()
         }
@@ -378,7 +465,7 @@ struct GhostPeekingOverlay: View {
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [.white.opacity(0.6), .clear],
+                        colors: [HealthStatus.ghost.color.opacity(0.5), .clear],
                         center: .center,
                         startRadius: 10,
                         endRadius: 50
@@ -464,7 +551,6 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @AppStorage("appearanceMode") private var appearanceMode: AppearanceMode = .system
-    @State private var showingGhostCreated = false
     @State private var showingAddCategory = false
     @State private var editingCategory: Category?
 
@@ -541,17 +627,26 @@ struct SettingsView: View {
                     }
                 }
 
+                #if DEBUG
                 Section {
-                    Button {
-                        createTestGhost()
+                    Button(role: .destructive) {
+                        reseedDevData()
                     } label: {
-                        Label("Create Test Ghost", systemImage: "ghost")
+                        Label("Reset & Reseed Data", systemImage: "arrow.counterclockwise")
+                    }
+
+                    Button(role: .destructive) {
+                        deleteAllData()
+                    } label: {
+                        Label("Delete All Data", systemImage: "trash")
                     }
                 } header: {
                     Text("Developer")
                 } footer: {
-                    Text("Creates a ghost friend to test the haunting feature")
+                    Text("Reset & Reseed replaces all data with samples. Delete All wipes everything.")
                 }
+                #endif
+
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -559,11 +654,6 @@ struct SettingsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
-            }
-            .alert("Ghost Created! 👻", isPresented: $showingGhostCreated) {
-                Button("OK") { dismiss() }
-            } message: {
-                Text("A test ghost has been added to your garden. Watch for them peeking around!")
             }
             .sheet(isPresented: $showingAddCategory) {
                 AddEditCategoryView()
@@ -584,18 +674,43 @@ struct SettingsView: View {
         try? modelContext.save()
     }
 
-    private func createTestGhost() {
-        let ghostDate = Calendar.current.date(byAdding: .day, value: -45, to: .now) ?? .now
-        let ghost = Friend(
-            name: "Ghost Riley",
-            healthScore: 0,
-            lastContactDate: ghostDate,
-            notes: "A test ghost to see the haunting feature! 👻"
-        )
-        modelContext.insert(ghost)
+    #if DEBUG
+    private func reseedDevData() {
+        // Delete all friends (cascades to interactions)
+        let friends = (try? modelContext.fetch(FetchDescriptor<Friend>())) ?? []
+        for friend in friends {
+            modelContext.delete(friend)
+        }
+
+        // Delete all interactions (in case any orphaned)
+        let interactions = (try? modelContext.fetch(FetchDescriptor<Interaction>())) ?? []
+        for interaction in interactions {
+            modelContext.delete(interaction)
+        }
+
+        // Re-fetch categories and seed
+        let cats = (try? modelContext.fetch(FetchDescriptor<Category>())) ?? []
+        NourishApp.insertDevData(context: modelContext, categories: cats)
         try? modelContext.save()
-        showingGhostCreated = true
+        dismiss()
     }
+
+    private func deleteAllData() {
+        let friends = (try? modelContext.fetch(FetchDescriptor<Friend>())) ?? []
+        for friend in friends {
+            modelContext.delete(friend)
+        }
+
+        let interactions = (try? modelContext.fetch(FetchDescriptor<Interaction>())) ?? []
+        for interaction in interactions {
+            modelContext.delete(interaction)
+        }
+
+        try? modelContext.save()
+        dismiss()
+    }
+    #endif
+
 }
 
 // MARK: - Add/Edit Category View

@@ -13,11 +13,15 @@ struct HealthBarView: View {
     private var status: HealthStatus { HealthStatus.status(for: score) }
 
     var body: some View {
-        if showHearts {
-            heartsView
-        } else {
-            barView
+        Group {
+            if showHearts {
+                heartsView
+            } else {
+                barView
+            }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Health score \(Int(score)) out of 100, \(status.rawValue)")
     }
 
     private var barView: some View {
@@ -67,6 +71,7 @@ struct CreatureAvatarView: View {
     let friend: Friend
     var size: CGFloat = 60
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var bounce = false
     @State private var wiggle = false
     @State private var ghostFloat = false
@@ -81,7 +86,7 @@ struct CreatureAvatarView: View {
                 Circle()
                     .fill(
                         RadialGradient(
-                            colors: [Color.white.opacity(0.4), Color.clear],
+                            colors: [HealthStatus.ghost.color.opacity(0.4), Color.clear],
                             center: .center,
                             startRadius: size * 0.3,
                             endRadius: size * 0.6
@@ -96,7 +101,7 @@ struct CreatureAvatarView: View {
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: friend.status.bgGradient,
+                        colors: friend.status.bgGradient(for: colorScheme),
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -133,9 +138,11 @@ struct CreatureAvatarView: View {
                         .font(.system(size: size * 0.12))
                 )
                 .offset(x: size * 0.35, y: -size * 0.35)
-                .shadow(color: isGhost ? .white.opacity(0.5) : .black.opacity(0.1), radius: isGhost ? 4 : 2, x: 0, y: 1)
+                .shadow(color: isGhost ? HealthStatus.ghost.color.opacity(0.5) : .primary.opacity(0.1), radius: isGhost ? 4 : 2, x: 0, y: 1)
         }
         .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(friend.name), status: \(friend.status.rawValue)")
         .scaleEffect(bounce ? 1.05 : 1.0)
         .rotationEffect(.degrees(wiggle ? 2 : -2))
         .offset(y: ghostFloat ? -4 : 4)

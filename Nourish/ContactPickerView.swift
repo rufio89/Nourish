@@ -11,6 +11,7 @@ struct PickedContact {
     var name: String
     var phoneNumber: String
     var photoData: Data?
+    var birthday: Date?
 }
 
 /// A button that presents CNContactPickerViewController when tapped.
@@ -48,8 +49,9 @@ struct ContactPickerButton<Label: View>: UIViewControllerRepresentable {
 
             let phone = contact.phoneNumbers.first?.value.stringValue ?? ""
             let photoData = contact.imageDataAvailable ? contact.imageData : nil
+            let birthday = contact.birthday.flatMap { Calendar.current.date(from: $0) }
 
-            let picked = PickedContact(name: name, phoneNumber: phone, photoData: photoData)
+            let picked = PickedContact(name: name, phoneNumber: phone, photoData: photoData, birthday: birthday)
 
             DispatchQueue.main.async { [self] in
                 onPick(picked)

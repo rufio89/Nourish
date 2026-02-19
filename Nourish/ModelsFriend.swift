@@ -46,6 +46,10 @@ enum HealthStatus: String, Codable {
     }
 
     var bgGradient: [Color] {
+        bgGradientLight
+    }
+
+    var bgGradientLight: [Color] {
         switch self {
         case .thriving: [Color(red: 0.85, green: 1.0, blue: 0.9), Color(red: 0.7, green: 0.95, blue: 0.85)]
         case .okay:     [Color(red: 1.0, green: 0.98, blue: 0.85), Color(red: 1.0, green: 0.95, blue: 0.75)]
@@ -53,6 +57,20 @@ enum HealthStatus: String, Codable {
         case .critical: [Color(red: 1.0, green: 0.9, blue: 0.92), Color(red: 1.0, green: 0.82, blue: 0.85)]
         case .ghost:    [Color(red: 0.9, green: 0.92, blue: 0.95), Color(red: 0.82, green: 0.85, blue: 0.9)]
         }
+    }
+
+    var bgGradientDark: [Color] {
+        switch self {
+        case .thriving: [Color(red: 0.15, green: 0.25, blue: 0.18), Color(red: 0.1, green: 0.2, blue: 0.15)]
+        case .okay:     [Color(red: 0.25, green: 0.22, blue: 0.12), Color(red: 0.2, green: 0.18, blue: 0.1)]
+        case .fading:   [Color(red: 0.25, green: 0.17, blue: 0.14), Color(red: 0.22, green: 0.15, blue: 0.12)]
+        case .critical: [Color(red: 0.25, green: 0.14, blue: 0.16), Color(red: 0.22, green: 0.12, blue: 0.14)]
+        case .ghost:    [Color(red: 0.18, green: 0.19, blue: 0.22), Color(red: 0.15, green: 0.16, blue: 0.2)]
+        }
+    }
+
+    func bgGradient(for colorScheme: ColorScheme) -> [Color] {
+        colorScheme == .dark ? bgGradientDark : bgGradientLight
     }
 
     var isGhost: Bool { self == .ghost }
@@ -95,8 +113,8 @@ enum InteractionType: String, Codable, CaseIterable, Identifiable {
     var points: Double {
         switch self {
         case .hangout:     40
-        case .call:        30
-        case .text:        15
+        case .call:        35
+        case .text:        25
         case .socialMedia:  5
         }
     }
@@ -119,8 +137,10 @@ final class Friend {
     var photoData: Data?
     var healthScore: Double       // 0–100
     var lastContactDate: Date
+    var lastDecayDate: Date       // tracks when decay was last applied
     var notes: String
     var phoneNumber: String       // e.g. "+15551234567"
+    var birthday: Date?
 
     @Relationship(deleteRule: .cascade)
     var interactions: [Interaction] = []
@@ -134,14 +154,17 @@ final class Friend {
         healthScore: Double = 80,
         lastContactDate: Date = .now,
         notes: String = "",
-        phoneNumber: String = ""
+        phoneNumber: String = "",
+        birthday: Date? = nil
     ) {
         self.name = name
         self.photoData = photoData
         self.phoneNumber = phoneNumber
         self.healthScore = healthScore
         self.lastContactDate = lastContactDate
+        self.lastDecayDate = lastContactDate
         self.notes = notes
+        self.birthday = birthday
     }
 
     // MARK: Computed helpers
@@ -161,14 +184,46 @@ final class Friend {
         return Image(uiImage: uiImage)
     }
 
+    // MARK: Birthday helpers
+
+    var age: Int? {
+        guard let birthday else { return nil }
+        return Calendar.current.dateComponents([.year], from: birthday, to: .now).year
+    }
+
+    var daysUntilBirthday: Int? {
+        guard let birthday else { return nil }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let birthdayComponents = calendar.dateComponents([.month, .day], from: birthday)
+
+        guard let nextBirthday = calendar.nextDate(
+            after: today.addingTimeInterval(-1),
+            matching: birthdayComponents,
+            matchingPolicy: .nextTimePreservingSmallerComponents
+        ) else { return nil }
+
+        return calendar.dateComponents([.day], from: today, to: nextBirthday).day
+    }
+
+    var isBirthdayToday: Bool {
+        daysUntilBirthday == 0
+    }
+
+    var isBirthdaySoon: Bool {
+        guard let days = daysUntilBirthday else { return false }
+        return days > 0 && days <= 7
+    }
+
     // MARK: Business logic
 
-    /// Call on app launch to decay health based on days since last contact.
+    /// Call on app launch to decay health based on days since last decay.
     func applyDecay() {
-        let daysSinceContact = Calendar.current.numberOfDaysBetween(lastContactDate, and: .now)
-        guard daysSinceContact > 0 else { return }
-        let decay = Double(daysSinceContact) * 5.0
+        let daysSinceDecay = Calendar.current.numberOfDaysBetween(lastDecayDate, and: .now)
+        guard daysSinceDecay > 0 else { return }
+        let decay = Double(daysSinceDecay) * 1.5
         healthScore = max(0, healthScore - decay)
+        lastDecayDate = .now
     }
 
     /// Log a new interaction and boost health score.
@@ -177,6 +232,7 @@ final class Friend {
         interactions.append(interaction)
         healthScore = min(100, healthScore + type.points)
         lastContactDate = date
+        lastDecayDate = date
     }
 }
 

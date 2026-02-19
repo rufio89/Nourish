@@ -10,6 +10,7 @@ import MessageUI
 struct FriendDetailView: View {
     @Bindable var friend: Friend
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var showingLogInteraction = false
     @State private var showingEditFriend = false
@@ -27,6 +28,9 @@ struct FriendDetailView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     healthCard
+                    if friend.birthday != nil {
+                        birthdayCard
+                    }
                     if friend.isGhost {
                         resurrectSection
                     }
@@ -150,13 +154,69 @@ struct FriendDetailView: View {
             RoundedRectangle(cornerRadius: 20)
                 .fill(
                     LinearGradient(
-                        colors: friend.status.bgGradient,
+                        colors: friend.status.bgGradient(for: colorScheme),
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
                 .shadow(color: friend.status.color.opacity(0.2), radius: 10, x: 0, y: 5)
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(friend.name), \(friend.status.rawValue), health \(Int(friend.healthScore)) out of 100, last seen \(friend.lastContactDate.formatted(.relative(presentation: .named)))")
+    }
+
+    // MARK: - Birthday Card
+
+    private var birthdayCard: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(friend.isBirthdayToday
+                          ? Color.orange.opacity(colorScheme == .dark ? 0.3 : 0.2)
+                          : Color.purple.opacity(colorScheme == .dark ? 0.25 : 0.12))
+                    .frame(width: 48, height: 48)
+
+                Text(friend.isBirthdayToday ? "🎉" : "🎂")
+                    .font(.system(size: 24))
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                if friend.isBirthdayToday {
+                    Text("Happy Birthday!")
+                        .font(.system(.headline, design: .rounded))
+                        .foregroundStyle(.orange)
+                } else if let days = friend.daysUntilBirthday {
+                    Text(days == 1 ? "Birthday tomorrow!" : "Birthday in \(days) days")
+                        .font(.system(.headline, design: .rounded))
+                        .foregroundStyle(friend.isBirthdaySoon ? .orange : .primary)
+                }
+
+                if let birthday = friend.birthday {
+                    HStack(spacing: 8) {
+                        Text(birthday, format: .dateTime.month(.wide).day())
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(.secondary)
+
+                        if let age = friend.age {
+                            Text("·")
+                                .foregroundStyle(.secondary)
+                            Text(friend.isBirthdayToday ? "Turns \(age)" : "Age \(age)")
+                                .font(.system(.subheadline, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            Spacer()
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color(.systemBackground))
+                .shadow(color: .primary.opacity(0.08), radius: 10, x: 0, y: 5)
+        )
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Reach Out
@@ -189,7 +249,7 @@ struct FriendDetailView: View {
                     .padding(.vertical, 14)
                     .background(
                         RoundedRectangle(cornerRadius: 16)
-                            .fill(Color.blue.opacity(0.1))
+                            .fill(Color.blue.opacity(colorScheme == .dark ? 0.2 : 0.1))
                     )
                     .foregroundStyle(.blue)
                 }
@@ -209,7 +269,7 @@ struct FriendDetailView: View {
                     .padding(.vertical, 14)
                     .background(
                         RoundedRectangle(cornerRadius: 16)
-                            .fill(Color.green.opacity(0.1))
+                            .fill(Color.green.opacity(colorScheme == .dark ? 0.2 : 0.1))
                     )
                     .foregroundStyle(.green)
                 }
@@ -220,7 +280,7 @@ struct FriendDetailView: View {
         .background(
             RoundedRectangle(cornerRadius: 20)
                 .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 5)
+                .shadow(color: .primary.opacity(0.08), radius: 10, x: 0, y: 5)
         )
     }
 
@@ -259,7 +319,7 @@ struct FriendDetailView: View {
         .background(
             RoundedRectangle(cornerRadius: 20)
                 .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 5)
+                .shadow(color: .primary.opacity(0.08), radius: 10, x: 0, y: 5)
         )
     }
 
@@ -285,7 +345,7 @@ struct FriendDetailView: View {
         .background(
             RoundedRectangle(cornerRadius: 20)
                 .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 5)
+                .shadow(color: .primary.opacity(0.08), radius: 10, x: 0, y: 5)
         )
     }
 
@@ -308,7 +368,7 @@ struct FriendDetailView: View {
         .background(
             RoundedRectangle(cornerRadius: 20)
                 .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 5)
+                .shadow(color: .primary.opacity(0.08), radius: 10, x: 0, y: 5)
         )
     }
 
@@ -404,6 +464,7 @@ struct QuickLogButton: View {
             .animation(.spring(duration: 0.3), value: tapped)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Log \(type.rawValue), plus \(Int(type.points)) points")
     }
 }
 
@@ -438,6 +499,7 @@ struct InteractionRowView: View {
                 .font(.system(.caption, design: .rounded))
                 .foregroundStyle(.secondary)
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -449,76 +511,85 @@ struct ResurrectionOverlay: View {
 
     @State private var phase = 0
     @State private var sparkles: [SparkleParticle] = []
+    @State private var overlaySize: CGSize = .zero
 
     var body: some View {
-        ZStack {
-            // Background
-            Color.black.opacity(phase >= 1 ? 0.7 : 0)
-                .ignoresSafeArea()
+        GeometryReader { geo in
+            ZStack {
+                // Background
+                Color(.systemBackground).opacity(phase >= 1 ? 0.85 : 0)
+                    .ignoresSafeArea()
 
-            // Sparkle particles
-            ForEach(sparkles) { sparkle in
-                Image(systemName: "sparkle")
-                    .font(.system(size: sparkle.size))
-                    .foregroundStyle(sparkle.color)
-                    .position(sparkle.position)
-                    .opacity(sparkle.opacity)
-            }
+                // Sparkle particles
+                ForEach(sparkles) { sparkle in
+                    Image(systemName: "sparkle")
+                        .font(.system(size: sparkle.size))
+                        .foregroundStyle(sparkle.color)
+                        .position(sparkle.position)
+                        .opacity(sparkle.opacity)
+                }
 
-            // Main content
-            VStack(spacing: 24) {
-                // Ghost transforming to alive
-                ZStack {
-                    // Glow effect
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [.white.opacity(0.8), .mint.opacity(0.3), .clear],
-                                center: .center,
-                                startRadius: 20,
-                                endRadius: phase >= 2 ? 150 : 50
+                // Main content
+                VStack(spacing: 24) {
+                    // Ghost transforming to alive
+                    ZStack {
+                        // Glow effect
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [.mint.opacity(0.6), .mint.opacity(0.2), .clear],
+                                    center: .center,
+                                    startRadius: 20,
+                                    endRadius: phase >= 2 ? 150 : 50
+                                )
                             )
-                        )
-                        .frame(width: 200, height: 200)
-                        .blur(radius: 20)
+                            .frame(width: 200, height: 200)
+                            .blur(radius: 20)
 
-                    // Face transition
-                    Text(phase >= 2 ? "😊" : "👻")
-                        .font(.system(size: 60))
-                        .scaleEffect(phase >= 2 ? 1.2 : 1.0)
-                }
-
-                if phase >= 2 {
-                    VStack(spacing: 8) {
-                        Text("Resurrection!")
-                            .font(.system(size: 32, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-
-                        Text("\(friendName) has returned!")
-                            .font(.system(.title3, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.9))
+                        // Face transition
+                        Text(phase >= 2 ? "😊" : "👻")
+                            .font(.system(size: 60))
+                            .scaleEffect(phase >= 2 ? 1.2 : 1.0)
                     }
-                    .transition(.scale.combined(with: .opacity))
-                }
 
-                if phase >= 3 {
-                    Button {
-                        onDismiss()
-                    } label: {
-                        Text("Welcome Back!")
-                            .font(.system(.headline, design: .rounded))
-                            .foregroundStyle(.mint)
-                            .padding(.horizontal, 32)
-                            .padding(.vertical, 14)
-                            .background(.white, in: Capsule())
+                    if phase >= 2 {
+                        VStack(spacing: 8) {
+                            Text("Resurrection!")
+                                .font(.system(size: 32, weight: .bold, design: .rounded))
+                                .foregroundStyle(.primary)
+
+                            Text("\(friendName) has returned!")
+                                .font(.system(.title3, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
+                        .transition(.scale.combined(with: .opacity))
                     }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+
+                    if phase >= 3 {
+                        Button {
+                            onDismiss()
+                        } label: {
+                            Text("Welcome Back!")
+                                .font(.system(.headline, design: .rounded))
+                                .foregroundStyle(.mint)
+                                .padding(.horizontal, 32)
+                                .padding(.vertical, 14)
+                                .background(Color(.secondarySystemBackground), in: Capsule())
+                        }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                 }
             }
+            .onAppear {
+                overlaySize = geo.size
+                runAnimation()
+            }
+            .onChange(of: geo.size) { _, newSize in
+                overlaySize = newSize
+            }
         }
-        .onAppear {
-            runAnimation()
-        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Resurrection! \(friendName) has returned!")
     }
 
     private func runAnimation() {
@@ -550,16 +621,16 @@ struct ResurrectionOverlay: View {
     }
 
     private func addSparkle() {
-        let screenWidth = UIScreen.main.bounds.width
-        let screenHeight = UIScreen.main.bounds.height
+        let width = max(overlaySize.width, 100)
+        let height = max(overlaySize.height, 300)
 
         let sparkle = SparkleParticle(
             position: CGPoint(
-                x: CGFloat.random(in: 50...(screenWidth - 50)),
-                y: CGFloat.random(in: 200...(screenHeight - 200))
+                x: CGFloat.random(in: 50...(width - 50)),
+                y: CGFloat.random(in: 200...(height - 200))
             ),
             size: CGFloat.random(in: 8...20),
-            color: [Color.white, .mint, .yellow, .cyan].randomElement()!,
+            color: [Color.mint, .yellow, .cyan, .green].randomElement()!,
             opacity: Double.random(in: 0.6...1.0)
         )
         sparkles.append(sparkle)

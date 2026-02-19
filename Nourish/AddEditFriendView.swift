@@ -24,6 +24,8 @@ struct AddEditFriendView: View {
     @State private var lastContactDate: Date = Calendar.current.date(byAdding: .day, value: -14, to: .now) ?? .now
     @State private var rememberLastContact: Bool = false
     @State private var selectedCategories: Set<PersistentIdentifier> = []
+    @State private var hasBirthday: Bool = false
+    @State private var birthdayDate: Date = Calendar.current.date(byAdding: .year, value: -25, to: .now) ?? .now
 
     private var isEditing: Bool { friend != nil }
     private var isSaveDisabled: Bool { name.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -50,6 +52,10 @@ struct AddEditFriendView: View {
                         name = picked.name
                         phoneNumber = picked.phoneNumber
                         photoData = picked.photoData
+                        if let pickedBirthday = picked.birthday {
+                            hasBirthday = true
+                            birthdayDate = pickedBirthday
+                        }
                     }) {
                         Label("Import from Contacts", systemImage: "person.crop.circle.badge.plus")
                             .frame(maxWidth: .infinity)
@@ -70,6 +76,24 @@ struct AddEditFriendView: View {
                 Section("Notes") {
                     TextField("Anything worth remembering…", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
+                }
+
+                Section {
+                    Toggle(isOn: $hasBirthday.animation()) {
+                        Label("Birthday", systemImage: "gift.fill")
+                            .font(.system(.subheadline, design: .rounded))
+                    }
+                    .tint(.mint)
+
+                    if hasBirthday {
+                        DatePicker(
+                            "Date of birth",
+                            selection: $birthdayDate,
+                            in: ...Date.now,
+                            displayedComponents: .date
+                        )
+                        .font(.system(.subheadline, design: .rounded))
+                    }
                 }
 
                 if !categories.isEmpty {
@@ -193,6 +217,10 @@ struct AddEditFriendView: View {
         lastContactDate = friend.lastContactDate
         rememberLastContact = true
         selectedCategories = Set(friend.categories.map { $0.id })
+        if let bday = friend.birthday {
+            hasBirthday = true
+            birthdayDate = bday
+        }
     }
 
     private func toggleCategory(_ category: Category) {
@@ -212,6 +240,7 @@ struct AddEditFriendView: View {
             friend.notes       = notes
             friend.photoData   = photoData
             friend.categories  = selectedCats
+            friend.birthday    = hasBirthday ? birthdayDate : nil
         } else {
             // Calculate starting health based on last contact
             let contactDate = rememberLastContact ? lastContactDate : Calendar.current.date(byAdding: .day, value: -14, to: .now) ?? .now
@@ -223,7 +252,8 @@ struct AddEditFriendView: View {
                 healthScore: startingHealth,
                 lastContactDate: contactDate,
                 notes: notes,
-                phoneNumber: phoneNumber.trimmingCharacters(in: .whitespaces)
+                phoneNumber: phoneNumber.trimmingCharacters(in: .whitespaces),
+                birthday: hasBirthday ? birthdayDate : nil
             )
             newFriend.categories = selectedCats
             modelContext.insert(newFriend)

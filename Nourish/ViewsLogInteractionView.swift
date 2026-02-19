@@ -96,6 +96,8 @@ struct LogInteractionView: View {
 
             HealthBarView(score: previewScore, height: 10)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Health preview: \(Int(friend.healthScore)) to \(Int(previewScore)), plus \(Int(selectedType.points)) points")
     }
 
     // MARK: - Log
